@@ -21,7 +21,12 @@ OPENING_BLOCK_LAPS = 7
 
 app = Flask(__name__)
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "runs.db")
+# DB_PATH is configurable so a Render persistent disk (e.g. /var/data/runs.db)
+# can be mounted; otherwise the SQLite file lives next to the app and is lost
+# on every redeploy because Render's default filesystem is ephemeral.
+DB_PATH = os.environ.get(
+    "DB_PATH", os.path.join(os.path.dirname(__file__), "runs.db")
+)
 
 
 # ---------- storage ----------
@@ -33,6 +38,9 @@ def get_db():
 
 
 def init_db():
+    db_dir = os.path.dirname(DB_PATH)
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
     conn = get_db()
     conn.execute(
         """
@@ -281,4 +289,8 @@ def confirm():
 init_db()
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    # Local dev only. In production (Render) gunicorn imports `app` directly and
+    # binds to 0.0.0.0:$PORT via the start command, so this block never runs.
+    debug = os.environ.get("FLASK_DEBUG", "1") == "1"
+    port = int(os.environ.get("PORT", 5000))
+    app.run(debug=debug, host="0.0.0.0", port=port)

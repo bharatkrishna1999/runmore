@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}runmore — run logged{% endblock %}
+{% block body %}
+  <h1>Run logged</h1>
+  <div class="stat">Total laps: <strong>{{ stats.total_laps }}</strong></div>
+  <div class="stat">Distance: <strong>{{ stats.distance_km }} km</strong></div>
+  <div class="stat">Overall pace: <strong>{{ stats.overall_kmh }} km/h</strong></div>
+  <div class="stat">
+    Opening {{ stats.opening_laps }} laps:
+    <strong>{{ stats.opening_kmh }} km/h</strong>
+  </div>
+
+  {% if coaching_note %}
+    <div class="coaching">{{ coaching_note }}</div>
+  {% endif %}
+
+  <p style="margin-top:1.5rem">
+    <a href="{{ url_for('index') }}">Log another run</a>
+  </p>
+{% endblock %}
