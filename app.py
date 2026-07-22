@@ -6,6 +6,7 @@ import sqlite3
 from datetime import date, datetime
 
 from flask import Flask, request, render_template, redirect, url_for
+from jinja2 import DictLoader
 import requests
 from dotenv import load_dotenv
 
@@ -26,6 +27,137 @@ app = Flask(__name__)
 # on every redeploy because Render's default filesystem is ephemeral.
 DB_PATH = os.environ.get(
     "DB_PATH", os.path.join(os.path.dirname(__file__), "runs.db")
+)
+
+
+# ---------- templates (inlined) ----------
+# Templates are kept in a DictLoader so there's no separate templates/ folder;
+# they use normal Jinja inheritance ({% extends "base.html" %}).
+
+BASE_TEMPLATE = """
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title or 'runmore' }}</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      max-width: 640px; margin: 0 auto; padding: 1.5rem; line-height: 1.5;
+    }
+    h1 { font-size: 1.5rem; }
+    label { display: block; margin: 0.75rem 0 0.25rem; font-weight: 600; }
+    input[type=text], input[type=number], textarea {
+      width: 100%; padding: 0.5rem; font-size: 1rem; box-sizing: border-box;
+    }
+    button {
+      margin-top: 1rem; padding: 0.6rem 1.2rem; font-size: 1rem;
+      cursor: pointer; border-radius: 6px;
+    }
+    table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
+    th, td { border: 1px solid #8884; padding: 0.4rem 0.6rem; text-align: left; }
+    .stat { font-size: 1.1rem; margin: 0.3rem 0; }
+    .coaching {
+      margin-top: 1.5rem; padding: 1rem; border-left: 4px solid #4a90d9;
+      background: #4a90d914;
+    }
+    a { color: #4a90d9; }
+  </style>
+</head>
+<body>
+{% block body %}{% endblock %}
+</body>
+</html>
+"""
+
+INDEX_TEMPLATE = """
+{% extends "base.html" %}
+{% block body %}
+  <h1>runmore</h1>
+  <p>Upload one or more photos of your stopwatch lap screen. We'll read the laps,
+     let you review them, and log the run.</p>
+  <form action="{{ url_for('extract') }}" method="post" enctype="multipart/form-data">
+    <label for="images">Stopwatch photo(s)</label>
+    <input id="images" type="file" name="images" accept="image/*" multiple required>
+    <button type="submit">Read laps</button>
+  </form>
+{% endblock %}
+"""
+
+REVIEW_TEMPLATE = """
+{% extends "base.html" %}
+{% block body %}
+  <h1>Review laps</h1>
+  {% if not laps %}
+    <p>No laps could be read from those images.
+       <a href="{{ url_for('index') }}">Try again</a>.</p>
+  {% else %}
+    <p>Check the extracted laps, fix any misreads, then confirm.</p>
+    <form action="{{ url_for('confirm') }}" method="post">
+      <input type="hidden" name="count" value="{{ laps|length }}">
+      <table>
+        <thead><tr><th>Lap</th><th>Time</th></tr></thead>
+        <tbody>
+        {% for lap in laps %}
+          <tr>
+            <td>
+              <input type="number" name="lap_{{ loop.index0 }}"
+                     value="{{ lap.lap }}" style="width:5rem">
+            </td>
+            <td>
+              <input type="text" name="time_{{ loop.index0 }}"
+                     value="{{ lap.time }}">
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+
+      <label>
+        <input type="checkbox" name="bonk" value="1"> I bonked on this run
+      </label>
+
+      <label for="note">Note (optional)</label>
+      <textarea id="note" name="note" rows="3"></textarea>
+
+      <button type="submit">Confirm &amp; get coaching</button>
+    </form>
+  {% endif %}
+{% endblock %}
+"""
+
+RESULT_TEMPLATE = """
+{% extends "base.html" %}
+{% block body %}
+  <h1>Run logged</h1>
+  <div class="stat">Total laps: <strong>{{ stats.total_laps }}</strong></div>
+  <div class="stat">Distance: <strong>{{ stats.distance_km }} km</strong></div>
+  <div class="stat">Overall pace: <strong>{{ stats.overall_kmh }} km/h</strong></div>
+  <div class="stat">
+    Opening {{ stats.opening_laps }} laps:
+    <strong>{{ stats.opening_kmh }} km/h</strong>
+  </div>
+
+  {% if coaching_note %}
+    <div class="coaching">{{ coaching_note }}</div>
+  {% endif %}
+
+  <p style="margin-top:1.5rem">
+    <a href="{{ url_for('index') }}">Log another run</a>
+  </p>
+{% endblock %}
+"""
+
+
+app.jinja_loader = DictLoader(
+    {
+        "base.html": BASE_TEMPLATE,
+        "index.html": INDEX_TEMPLATE,
+        "review.html": REVIEW_TEMPLATE,
+        "result.html": RESULT_TEMPLATE,
+    }
 )
 
 
@@ -252,7 +384,7 @@ def call_groq_coaching(stats, recent_rows, bonk, note):
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", title="runmore — log a run")
 
 
 @app.route("/extract", methods=["POST"])
@@ -262,7 +394,7 @@ def extract():
     if not files:
         return redirect(url_for("index"))
     laps = extract_laps_from_images(files)
-    return render_template("review.html", laps=laps)
+    return render_template("review.html", title="runmore — review laps", laps=laps)
 
 
 @app.route("/confirm", methods=["POST"])
@@ -283,7 +415,8 @@ def confirm():
     coaching_note = call_groq_coaching(stats, recent_rows, bonk, note)
     save_run(stats, bonk, note, coaching_note, laps)
 
-    return render_template("result.html", stats=stats, coaching_note=coaching_note)
+    return render_template("result.html", title="runmore — run logged",
+                           stats=stats, coaching_note=coaching_note)
 
 
 init_db()
