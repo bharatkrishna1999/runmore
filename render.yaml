@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: runmore
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.4"
+      - key: FLASK_DEBUG
+        value: "0"
+      - key: DB_PATH
+        value: /var/data/runs.db
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+    disk:
+      name: runmore-data
+      mountPath: /var/data
+      sizeGB: 1
