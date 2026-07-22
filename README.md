@@ -29,8 +29,14 @@ This repo includes a [`render.yaml`](./render.yaml) blueprint.
 
 1. Push to GitHub and create a new **Blueprint** on Render pointing at this repo,
    or create a **Web Service** manually with:
+   - **Language / Runtime:** `Python 3` (make sure this is set — if Render
+     misdetects the runtime it will fail with `gunicorn: command not found`)
    - **Build command:** `pip install -r requirements.txt`
-   - **Start command:** `gunicorn app:app --bind 0.0.0.0:$PORT`
+   - **Start command:** `python -m gunicorn app:app --bind 0.0.0.0:$PORT`
+
+   Invoking gunicorn as `python -m gunicorn` (rather than the bare `gunicorn`
+   console script) makes the start command robust even if the interpreter's
+   `bin/` directory is not on `PATH` at runtime.
 2. Set the secret env vars `GEMINI_API_KEY` and `GROQ_API_KEY` in the Render
    dashboard (they are marked `sync: false` in the blueprint).
 3. The blueprint mounts a 1 GB persistent disk at `/var/data` and points
